@@ -234,16 +234,16 @@ input, textarea { caret-color: var(--red); }
 /* The player is a physical object, so it gets real lighting: soft gradients, gloss and a frosted shell.
    This is the one place the "no gradients / no glass" rule is relaxed (owner's call). */
 :root {
-  --wm-body: #e4e6ea; --wm-hi: #f6f7f9; --wm-edge: #b8bcc4; --wm-deck: #c6cad2;
-  --wm-key: #f3f4f6; --wm-key-edge: #aeb2ba; --wm-icon: #3d424b; --wm-bezel: #8d929c;
+  --wm-body: #d9dadd; --wm-hi: #eeeef0; --wm-edge: #acaeb3; --wm-deck: #bcbdc2;
+  --wm-key: #ebebed; --wm-key-edge: #a3a5aa; --wm-icon: #35373c; --wm-bezel: #84868c;
   --lcd-bg: #a9c0d6; --lcd-ink: #1c2a3b; --lcd-cell: rgba(28,42,59,.075); --lcd-shadow: rgba(28,42,59,.17); --lcd-ghost: rgba(28,42,59,.2); --lcd-dim: rgba(28,42,59,.48);
   --shell: #2b2c30; --shell-low: #222327; --shell-hi: rgba(255,255,255,.12);
   --hl: rgba(255,255,255,.75); --key-hl: rgba(255,255,255,.85); --lo: rgba(0,0,0,.1);
   --frost: color-mix(in srgb, var(--wm-body) 80%, transparent);
 }
 [data-theme="dark"] {
-  --wm-body: #2c2f35; --wm-hi: #3a3d44; --wm-edge: #16171a; --wm-deck: #23252a;
-  --wm-key: #383b42; --wm-key-edge: #15161a; --wm-icon: #c9ccd3; --wm-bezel: #121316;
+  --wm-body: #222326; --wm-hi: #2f3034; --wm-edge: #0f0f11; --wm-deck: #1b1c1f;
+  --wm-key: #2e2f33; --wm-key-edge: #0e0e10; --wm-icon: #c4c5ca; --wm-bezel: #0e0e10;
   --lcd-bg: #8eaac6; --lcd-ink: #142133; --lcd-cell: rgba(20,33,51,.09); --lcd-shadow: rgba(20,33,51,.2); --lcd-ghost: rgba(20,33,51,.22); --lcd-dim: rgba(20,33,51,.52);
   --shell: #1c1d21; --shell-low: #151619; --shell-hi: rgba(255,255,255,.08);
   --hl: rgba(255,255,255,.1); --key-hl: rgba(255,255,255,.16); --lo: rgba(0,0,0,.35);
