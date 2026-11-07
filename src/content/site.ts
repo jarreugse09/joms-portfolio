@@ -9,7 +9,7 @@ export const person = {
   location: "Manila, Philippines",
   timezone: "Asia/Manila",
   email: "jomariexesguerra@gmail.com",
-  portrait: "/images/joms-dither.png",
+  portrait: "/images/joms.webp",
   line: "Transforming brilliant ideas into tangible necessity.",
   socials: [
     { label: "GitHub", href: "https://github.com/jarreugse09", handle: "jarreugse09" },

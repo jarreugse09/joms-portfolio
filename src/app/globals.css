@@ -126,9 +126,6 @@ input, textarea { caret-color: var(--red); }
 @media (min-width: 721px) { .profile .name-area { min-height: 236px; } .portrait { display: flex; align-items: flex-end; } }
 .portrait { border-right: 1px solid var(--line); padding: 12px; }
 .portrait img { display: block; width: 100%; height: auto; border-radius: 4px; }
-/* crisp dither only where the screen has enough pixels; on 1x screens nearest-neighbour downscaling smears it */
-@media (min-resolution: 2dppx) { .portrait img { image-rendering: pixelated; } }
-[data-theme="dark"] .portrait img { background: #e4e4e7; }
 .name { font-size: clamp(28px, 5vw, 34px); line-height: 1.1; font-weight: 500; letter-spacing: -0.03em; display: flex; align-items: center; gap: 10px; }
 .badge { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--red); color: var(--red-ink); }
 @media (max-width: 560px) { .profile { grid-template-columns: 112px 1fr; } .portrait { padding: 8px; } }
@@ -457,5 +454,3 @@ input, textarea { caret-color: var(--red); }
   .role-line { flex-direction: column; align-items: flex-start; gap: 6px; }
 }
 
-/* the dither only stays crisp near its native size; small portraits scale smoothly */
-@media (max-width: 560px) { .portrait img { image-rendering: auto; } }

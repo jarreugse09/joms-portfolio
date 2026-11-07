@@ -119,7 +119,7 @@ export default async function Home() {
         {/* profile */}
         <Row className="profile" label="Profile">
           <div className="portrait">
-            <Image src={person.portrait} alt="Portrait of Jomarie Esguerra" width={320} height={320} priority sizes="168px" unoptimized />
+            <Image src={person.portrait} alt="Portrait of Jomarie Esguerra" width={640} height={640} priority sizes="168px" />
           </div>
           <div className="flex flex-col">
             <div className="name-area relative flex flex-1 items-end px-4 pb-3 pt-6">
