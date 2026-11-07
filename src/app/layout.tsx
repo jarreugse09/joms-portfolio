@@ -1,10 +1,12 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono, Silkscreen } from "next/font/google";
+import { Caveat, Geist, Geist_Mono, Silkscreen } from "next/font/google";
 import "./globals.css";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-geist", display: "swap" });
 const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono", display: "swap" });
 const silkscreen = Silkscreen({ subsets: ["latin"], weight: "400", variable: "--font-silkscreen", display: "swap" });
+// handwriting on the walkman's cassette label only
+const caveat = Caveat({ subsets: ["latin"], weight: "500", variable: "--font-hand", display: "swap" });
 
 const url = "https://www.jomariexe.me";
 
@@ -38,7 +40,7 @@ const themeScript = `(function(){try{var t=localStorage.getItem('jx-theme');if(t
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" data-theme="dark" suppressHydrationWarning className={`${geist.variable} ${geistMono.variable} ${silkscreen.variable}`}>
+    <html lang="en" data-theme="dark" suppressHydrationWarning className={`${geist.variable} ${geistMono.variable} ${silkscreen.variable} ${caveat.variable}`}>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>

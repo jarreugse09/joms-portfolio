@@ -1,21 +1,29 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { tracks } from "@/content/site";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import type { Album } from "@/lib/albums";
 import { emit } from "@/lib/bus";
+import { play as sfx } from "@/lib/sfx";
+import { createScreen, ditherCover, LIST, PITCH, type Colors, type ScreenView } from "@/lib/dotmatrix";
+import { drawReels, geometry } from "@/lib/tape";
+import SdCard from "./SdCard";
 
 type Status = "stopped" | "loading" | "playing" | "paused" | "error";
-
-const fmt = (s: number) => {
-  if (!Number.isFinite(s) || s < 0) s = 0;
-  return `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, "0")}`;
-};
+type Phase = "in" | "popped" | "flying" | "out" | "inserting" | "reading";
 
 // Wide screens have room in the side margin, so the player stays fully open there.
 const WIDE = "(min-width: 1360px)";
 const subWide = (cb: () => void) => { const m = matchMedia(WIDE); m.addEventListener("change", cb); return () => m.removeEventListener("change", cb); };
+const reduced = () => typeof window !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+const wait = (ms: number) => new Promise((r) => setTimeout(r, reduced() ? 0 : ms));
+const fmt = (s: number) => { s = Math.max(0, Number.isFinite(s) ? s : 0); return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`; };
+const stored = (key: string, fallback: number, max: number) => {
+  if (typeof window === "undefined") return fallback;
+  const raw = localStorage.getItem(key), v = Number(raw);
+  return raw !== null && Number.isInteger(v) && v >= 0 && v <= max ? v : fallback;
+};
 
-/* ---------- small line icons (one stroke weight, like the reference) ---------- */
+/* ---------- line icons ---------- */
 const I = {
   play: <path d="M5 3.5v9l7.5-4.5z" />,
   pause: <><path d="M5 3.5v9" /><path d="M11 3.5v9" /></>,
@@ -25,78 +33,58 @@ const I = {
   shuffle: <><path d="M2.5 4.5h2.2c1.2 0 2 .6 2.6 1.6l1.6 3.8c.6 1 1.4 1.6 2.6 1.6h2" /><path d="M11.5 9.8l2 1.7-2 1.7" /><path d="M2.5 11.5h2.2c.8 0 1.4-.3 1.9-.8" /><path d="M9.4 5.3c.5-.5 1.1-.8 1.9-.8h2.2" /><path d="M11.5 2.8l2 1.7-2 1.7" /></>,
   list: <><path d="M2.5 4.5h7" /><path d="M2.5 8h7" /><path d="M2.5 11.5h4.5" /><path d="M12 11.5V5l2-.6" /><circle cx="11" cy="11.7" r="1.2" /></>,
   heart: <path d="M8 13.2S2.5 10 2.5 6.3A2.8 2.8 0 0 1 8 5a2.8 2.8 0 0 1 5.5 1.3C13.5 10 8 13.2 8 13.2z" />,
-  power: <><path d="M8 2.5v5" /><path d="M5 4.3a4.5 4.5 0 1 0 6 0" /></>,
 };
 function Ic({ d, fill = false, size = 16 }: { d: React.ReactNode; fill?: boolean; size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 16 16" fill={fill ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{d}</svg>
-  );
+  return <svg width={size} height={size} viewBox="0 0 16 16" fill={fill ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{d}</svg>;
 }
 
-/* ---------- dithered cover art, drawn per track ---------- */
-const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
-function Cover({ id, px = 40, className }: { id: string; px?: number; className?: string }) {
-  const ref = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    const c = ref.current!;
-    const ctx = c.getContext("2d")!;
-    const ink = getComputedStyle(c).getPropertyValue("--lcd-ink").trim() || "#1e2b3b";
-    ctx.clearRect(0, 0, px, px);
-    ctx.fillStyle = ink;
-    for (let y = 0; y < px; y++) for (let x = 0; x < px; x++) {
-      const u = x / px, v = y / px;
-      let t: number;
-      if (id === "harbor-lights") {
-        const moon = Math.hypot(u - 0.68, v - 0.3) < 0.15 ? 0.05 : 0.75 - v * 0.5;
-        t = v > 0.62 ? 0.35 + 0.35 * Math.sin(u * 22 + v * 40) * (v - 0.55) * 2 : moon;
-      } else if (id === "night-compile") {
-        const grid = (x % 8 === 0 || y % 8 === 0) ? 0.2 : 0.85;
-        t = Math.abs(u - 0.5) < 0.18 && Math.abs(v - 0.5) < 0.18 ? 0.1 + u * 0.3 : grid - v * 0.2;
-      } else {
-        const d = Math.hypot(u - 0.5, v - 0.6);
-        t = 0.55 + 0.4 * Math.sin(d * 34) * (1 - d);
-      }
-      if (t < (BAYER[(y % 4) * 4 + (x % 4)] + 0.5) / 16) ctx.fillRect(x, y, 1, 1);
-    }
-  }, [id, px]);
-  return <canvas ref={ref} width={px} height={px} className={className} aria-hidden="true" />;
-}
-
-export default function Walkman() {
+export default function Walkman({ albums }: { albums: Album[] }) {
   const audio = useRef<HTMLAudioElement>(null);
-  const viz = useRef<HTMLCanvasElement>(null);
+  const screenEl = useRef<HTMLCanvasElement>(null);
+  const reelsEl = useRef<HTMLCanvasElement>(null);
+  const wrapEl = useRef<HTMLDivElement>(null);
+  const slotEl = useRef<HTMLButtonElement>(null);
+  const fanEl = useRef<HTMLDivElement>(null);
+  const cassEl = useRef<HTMLDivElement>(null);
   const graph = useRef<{ ctx: AudioContext; analyser: AnalyserNode; data: Uint8Array<ArrayBuffer> } | null>(null);
+
   const [openState, setOpen] = useState(false);
   const wide = useSyncExternalStore(subWide, () => matchMedia(WIDE).matches, () => false);
   const open = wide || openState;
-  const [index, setIndex] = useState(0);
+  const [a, setA] = useState(() => stored("jx-album", 0, Math.max(0, albums.length - 1)));
+  const [i, setI] = useState(0);
   const [status, setStatus] = useState<Status>("stopped");
   const [time, setTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [volume, setVolume] = useState(() => {
-    if (typeof window === "undefined") return 6;
-    const raw = localStorage.getItem("jx-vol"), v = Number(raw);
-    return raw !== null && Number.isFinite(v) && v >= 0 && v <= 10 ? v : 6;
-  });
-  const [repeat, setRepeat] = useState(false);
-  const [shuffle, setShuffle] = useState(false);
-  const [list, setList] = useState(false);
-  const [aod, setAod] = useState(false); // big-cover "always-on" display
+  const [volume, setVolume] = useState(() => stored("jx-vol", 6, 10));
+  const [rpt, setRpt] = useState(false);
+  const [shf, setShf] = useState(false);
+  const [view, setView] = useState<"main" | "list">("main");
+  const [listTop, setListTop] = useState(0);
+  const [volPop, setVolPop] = useState(false);
+  const [phase, setPhase] = useState<Phase>("in");
+  const [tray, setTray] = useState(false);
+  const [hidden, setHidden] = useState<number | null>(null);
+  const [last, setLast] = useState<number | null>(null);
   const [likes, setLikes] = useState<string[]>(() => {
     if (typeof window === "undefined") return [];
     try { return JSON.parse(localStorage.getItem("jx-likes") || "[]"); } catch { return []; }
   });
-  const track = tracks[index];
+
+  const album = albums[a] ?? albums[0];
+  const song = album?.songs[i] ?? album?.songs[0];
   const playing = status === "playing";
-  const progress = duration ? time / duration : 0;
-  const liked = likes.includes(track.id);
+  const liked = !!song && likes.includes(song.id);
 
-  useEffect(() => {
-    if (audio.current) audio.current.volume = Math.pow(volume / 10, 1.6);
-    localStorage.setItem("jx-vol", String(volume));
-  }, [volume]);
+  // everything the animation loop needs, without re-subscribing it on every render
+  const snap = useRef({ a, i, album, song, playing, rpt, shf, volume, view, listTop, volPop, phase, status });
+  useLayoutEffect(() => { snap.current = { a, i, album, song, playing, rpt, shf, volume, view, listTop, volPop, phase, status }; });
+  const fx = useRef({ aL: 0, aR: 1, boost: 0, dir: 1, readAt: 0, level: 0, busy: false, wasOn: false, covers: new Map<string, Uint8Array | null>() });
+
+  useEffect(() => { if (audio.current) audio.current.volume = Math.pow(volume / 10, 1.6); localStorage.setItem("jx-vol", String(volume)); }, [volume]);
   useEffect(() => { localStorage.setItem("jx-likes", JSON.stringify(likes)); }, [likes]);
+  useEffect(() => { localStorage.setItem("jx-album", String(a)); }, [a]);
 
+  /* ---------- audio ---------- */
   const ensureGraph = () => {
     if (graph.current || !audio.current) return;
     try {
@@ -111,243 +99,350 @@ export default function Walkman() {
       graph.current = { ctx, analyser, data: new Uint8Array(analyser.frequencyBinCount) };
     } catch {}
   };
-
-  const play = useCallback(async () => {
-    const a = audio.current;
-    if (!a) return;
+  const start = useCallback(async () => {
+    const el = audio.current;
+    if (!el) return;
     ensureGraph();
     await graph.current?.ctx.resume().catch(() => {});
-    try { setStatus("loading"); await a.play(); } catch { setStatus("error"); }
+    try { setStatus("loading"); await el.play(); } catch { setStatus("error"); }
   }, []);
   const pause = () => audio.current?.pause();
-  const toggle = () => (playing || status === "loading" ? pause() : play());
+  const toggle = () => (playing || status === "loading" ? pause() : start());
 
-  const shuffleRef = useRef(shuffle);
-  useEffect(() => { shuffleRef.current = shuffle; }, [shuffle]);
   const go = useCallback((dir: 1 | -1) => {
-    const a = audio.current;
-    if (dir === -1 && a && a.currentTime > 3) { a.currentTime = 0; return; }
-    setIndex((i) => {
-      if (shuffleRef.current && tracks.length > 1) {
-        let j = i;
-        while (j === i) j = Math.floor(Math.random() * tracks.length);
-        return j;
-      }
-      return (i + dir + tracks.length) % tracks.length;
+    const el = audio.current, n = snap.current.album.songs.length;
+    fx.current.boost = 0.35; fx.current.dir = dir;
+    if (dir === -1 && el && el.currentTime > 3) { el.currentTime = 0; return; }
+    setI((cur) => {
+      if (snap.current.shf && n > 1) { let j = cur; while (j === cur) j = Math.floor(Math.random() * n); return j; }
+      return (cur + dir + n) % n;
     });
   }, []);
 
+  // a new song: reset time, keep playing if we were
   const wasPlaying = useRef(false);
   useEffect(() => { wasPlaying.current = playing; }, [playing]);
   const first = useRef(true);
   useEffect(() => {
     if (first.current) { first.current = false; return; }
-    setTime(0); setDuration(0);
-    if (wasPlaying.current) play(); else setStatus("stopped");
-  }, [index, play]);
+    setTime(0);
+    if (wasPlaying.current) start(); else setStatus("stopped");
+  }, [a, i, start]);
 
-  const repeatRef = useRef(repeat);
-  useEffect(() => { repeatRef.current = repeat; }, [repeat]);
   useEffect(() => {
-    const a = audio.current!;
+    const el = audio.current!;
     const onPlay = () => setStatus("playing");
     const onPause = () => setStatus((s) => (s === "error" ? s : "paused"));
     const onWait = () => setStatus("loading");
-    const onTime = () => setTime(a.currentTime);
-    const onMeta = () => setDuration(a.duration);
+    const onTime = () => setTime(el.currentTime);
     const onEnd = () => {
-      if (repeatRef.current) { a.currentTime = 0; a.play().catch(() => {}); return; }
+      if (snap.current.rpt) { el.currentTime = 0; el.play().catch(() => {}); return; }
       wasPlaying.current = true; go(1);
     };
     const onErr = () => setStatus("error");
-    const ev: [string, () => void][] = [["playing", onPlay], ["pause", onPause], ["waiting", onWait], ["timeupdate", onTime], ["loadedmetadata", onMeta], ["durationchange", onMeta], ["ended", onEnd], ["error", onErr]];
-    ev.forEach(([n, f]) => a.addEventListener(n, f));
-    return () => ev.forEach(([n, f]) => a.removeEventListener(n, f));
+    const ev: [string, () => void][] = [["playing", onPlay], ["pause", onPause], ["waiting", onWait], ["timeupdate", onTime], ["ended", onEnd], ["error", onErr]];
+    ev.forEach(([n, f]) => el.addEventListener(n, f));
+    return () => ev.forEach(([n, f]) => el.removeEventListener(n, f));
   }, [go]);
 
   useEffect(() => { emit("playing", playing); if (!playing) emit("level", 0); }, [playing]);
 
   useEffect(() => {
-    if (!("mediaSession" in navigator)) return;
-    navigator.mediaSession.metadata = new MediaMetadata({ title: track.title, artist: track.artist, album: "jomariexe tapes" });
-    navigator.mediaSession.setActionHandler("play", () => play());
+    if (!song || !("mediaSession" in navigator)) return;
+    navigator.mediaSession.metadata = new MediaMetadata({ title: song.title, artist: song.artist, album: album.name, artwork: [{ src: song.art, sizes: "300x300", type: "image/jpeg" }] });
+    navigator.mediaSession.setActionHandler("play", () => start());
     navigator.mediaSession.setActionHandler("pause", () => pause());
     navigator.mediaSession.setActionHandler("previoustrack", () => go(-1));
     navigator.mediaSession.setActionHandler("nexttrack", () => go(1));
-  }, [track, play, go]);
+  }, [song, album, start, go]);
 
-  // level for the eye + the little dot-matrix meter on the LCD
+  // cover art → dot cells (Apple's artwork allows cross-origin reads)
   useEffect(() => {
-    const draw = (data: Uint8Array | null) => {
-      const c = viz.current;
-      if (!c) return;
-      const ctx = c.getContext("2d")!;
-      const s = getComputedStyle(c);
-      const on = s.getPropertyValue("--lcd-ink").trim(), off = s.getPropertyValue("--lcd-off").trim();
-      ctx.clearRect(0, 0, c.width, c.height);
-      const cols = 14, rows = 3;
-      for (let b = 0; b < cols; b++) {
-        const v = data ? data[Math.min(data.length - 1, b + 1)] / 255 : 0;
-        const h = Math.round(v * rows);
-        for (let r = 0; r < rows; r++) { ctx.fillStyle = r < h ? on : off; ctx.fillRect(b * 6, c.height - (r + 1) * 4, 4, 3); }
-      }
+    if (!song || fx.current.covers.has(song.art)) return;
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => fx.current.covers.set(song.art, ditherCover(img));
+    img.src = song.art;
+  }, [song]);
+
+  /* ---------- animation loop: level for the eye, reels, LCD ---------- */
+  useEffect(() => {
+    const screen = screenEl.current ? createScreen(screenEl.current) : null;
+    let colors: Colors | null = null;
+    const readColors = () => {
+      const el = screenEl.current;
+      if (!el) return;
+      const cs = getComputedStyle(el), g = (n: string) => cs.getPropertyValue(n).trim();
+      colors = { ink: g("--lcd-ink"), cell: g("--lcd-cell"), dim: g("--lcd-dim"), ghost: g("--lcd-ghost"), shadow: g("--lcd-shadow") };
     };
-    if (!playing) { draw(null); return; }
-    let raf = 0;
-    const loop = () => {
+    readColors();
+    const mo = new MutationObserver(readColors);
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "class"] });
+    const mq = matchMedia("(prefers-color-scheme: dark)");
+    mq.addEventListener("change", readColors);
+
+    let raf = 0, prev = performance.now(), lastDraw = 0, reelsDirty = true;
+    const loop = (now: number) => {
+      const dt = Math.min(0.05, (now - prev) / 1000); prev = now;
+      const s = snap.current, f = fx.current, el = audio.current;
+      // loudness → eye + screen meter
       const g = graph.current;
-      if (g) {
+      if (s.playing && g) {
         g.analyser.getByteFrequencyData(g.data);
         let sum = 0;
-        for (let i = 0; i < 6; i++) sum += g.data[i];
-        emit("level", Math.min(1, sum / (6 * 255)) ** 1.5);
-        if (open && !aod && !list) draw(g.data);
+        for (let k = 0; k < 6; k++) sum += g.data[k];
+        f.level = Math.min(1, sum / (6 * 255)) ** 1.5;
+        emit("level", f.level);
+      } else f.level *= 0.85;
+
+      const t = el?.currentTime ?? 0, d = el && Number.isFinite(el.duration) && el.duration > 0 ? el.duration : 30;
+      // reels: steady tape speed, so the thinner pack spins faster
+      const rc = reelsEl.current;
+      if (rc) {
+        const speed = (s.playing ? 16 : 0) + (f.boost > 0 ? 220 : 0);
+        if (f.boost > 0) f.boost -= dt;
+        if (speed && !reduced()) {
+          const { pack } = geometry(rc.clientWidth, rc.clientHeight), p = t / d, dir = f.boost > 0 ? f.dir : 1;
+          f.aL -= (dir * speed * dt) / pack(1 - p); f.aR -= (dir * speed * dt) / pack(p);
+          reelsDirty = true;
+        }
+        if (reelsDirty || s.playing) { drawReels(rc, { p: t / d, aL: f.aL, aR: f.aR }); reelsDirty = false; }
+      }
+      // LCD at ~30fps
+      if (screen && colors && s.song && now - lastDraw > 33) {
+        lastDraw = now;
+        const v: ScreenView = s.phase === "out" || s.phase === "flying" || s.phase === "popped" ? "out" : s.phase === "reading" ? "reading" : s.volPop ? "volume" : s.view;
+        screen.draw({
+          view: v, playing: s.playing, index: s.i, count: s.album.songs.length, rpt: s.rpt, shf: s.shf, volume: s.volume,
+          title: s.song.title, artist: s.status === "error" ? "Preview unavailable" : s.song.artist, album: s.album.name, short: s.album.short,
+          t, d, titles: s.album.songs.map((x) => x.title), listTop: s.listTop, cover: f.covers.get(s.song.art) ?? null,
+          level: f.level, readFrac: Math.min(1, (now - f.readAt) / 850),
+        }, colors, now, reduced());
       }
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
-  }, [playing, open, aod, list]);
+    return () => { cancelAnimationFrame(raf); mo.disconnect(); mq.removeEventListener("change", readColors); };
+  }, [open]);
+
+  /* ---------- SD card swap ---------- */
+  const center = (el: Element) => { const r = el.getBoundingClientRect(), w = wrapEl.current!.getBoundingClientRect(); return [r.left - w.left + r.width / 2, r.top - w.top + r.height / 2]; };
+  const fanCard = (n: number) => fanEl.current?.querySelector<HTMLElement>(`[data-n="${n}"]`) ?? null;
+  // fly a copy of a card from one element to another in an arc
+  function fly(from: HTMLElement, to: HTMLElement, rot0: number, dur: number) {
+    const svg = from.querySelector("svg");
+    if (!svg || !wrapEl.current || reduced()) return Promise.resolve();
+    const [x0, y0] = center(from), [x1, y1] = center(to), w0 = from.offsetWidth, h0 = from.offsetHeight, s1 = to.offsetWidth / w0;
+    const el = document.createElement("div");
+    el.className = "fly";
+    el.style.left = `${x0 - w0 / 2}px`; el.style.top = `${y0 - h0 / 2}px`;
+    el.appendChild(svg.cloneNode(true));
+    wrapEl.current.appendChild(el);
+    const dx = x1 - x0, dy = y1 - y0;
+    return el.animate([
+      { transform: `translate(0,0) rotate(${rot0}deg) scale(1)` },
+      { transform: `translate(${dx / 2}px, ${dy / 2 - 40}px) rotate(${rot0 * 0.4 + (dx > 0 ? 8 : -8)}deg) scale(${(1 + s1) / 2 + 0.12})`, offset: 0.5 },
+      { transform: `translate(${dx}px, ${dy}px) rotate(0deg) scale(${s1})` },
+    ], { duration: dur, easing: "cubic-bezier(.45,0,.25,1)", fill: "forwards" }).finished.then(() => el.remove(), () => el.remove());
+  }
+
+  async function eject() {
+    const f = fx.current;
+    if (f.busy || phase !== "in") return;
+    f.busy = true; f.wasOn = playing;
+    pause(); setView("main"); sfx("eject");
+    setLast(a); setHidden(a); setPhase("popped"); setTray(true);
+    await wait(420);
+    setPhase("flying");
+    const home = fanCard(a);
+    if (home && slotEl.current) await fly(slotEl.current, home.querySelector(".sd") as HTMLElement, 0, 360);
+    setHidden(null); sfx("drop"); setPhase("out");
+    f.busy = false;
+    home?.focus({ preventScroll: true });
+  }
+
+  async function insert(n: number) {
+    const f = fx.current;
+    if (f.busy || snap.current.phase !== "out") return;
+    f.busy = true;
+    const card = fanCard(n);
+    sfx("lift"); setHidden(n); setPhase("flying");
+    if (card && slotEl.current) await fly(card.querySelector(".sd") as HTMLElement, slotEl.current, card.matches(":hover") ? 0 : parseFloat(card.style.getPropertyValue("--rot")) || 0, 460);
+    const changed = n !== snap.current.a;
+    if (changed) { setA(n); setI(0); setTime(0); setListTop(0); }
+    setHidden(null); setPhase("inserting"); setTray(false); sfx("insert");
+    await wait(170);
+    const c = cassEl.current;
+    if (c) { c.classList.remove("jolt"); void c.offsetWidth; c.classList.add("jolt"); }
+    f.boost = 0.2; f.dir = 1;
+    await wait(140);
+    f.readAt = performance.now(); setPhase("reading"); sfx("read");
+    await wait(changed ? 850 : 380);
+    setPhase("in");
+    f.busy = false;
+    if (f.wasOn) { wasPlaying.current = true; start(); }
+  }
 
   useEffect(() => {
-    if (!open || wide) return;
-    const k = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    const k = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (snap.current.phase === "out") insert(snap.current.a);
+      else if (open && !wide) setOpen(false);
+    };
     addEventListener("keydown", k);
     return () => removeEventListener("keydown", k);
-  }, [open, wide]);
+  });
 
-  const seekTo = (p: number) => {
-    const a = audio.current;
-    if (!a || !duration) return;
-    a.currentTime = Math.max(0, Math.min(duration - 0.05, p * duration));
-    setTime(a.currentTime);
+  /* ---------- volume knob ---------- */
+  const popTimer = useRef(0);
+  const setVol = (v: number) => {
+    v = Math.max(0, Math.min(10, Math.round(v)));
+    if (v === snap.current.volume) return;
+    setVolume(v); sfx("tick"); setVolPop(true);
+    clearTimeout(popTimer.current);
+    popTimer.current = window.setTimeout(() => setVolPop(false), 1100);
   };
-  const seekPointer = (e: React.PointerEvent<HTMLDivElement>) => {
+  const knobDown = (e: React.PointerEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
-    const at = (cx: number) => { const r = el.getBoundingClientRect(); seekTo((cx - r.left) / r.width); };
     el.setPointerCapture(e.pointerId);
-    at(e.clientX);
-    const move = (ev: PointerEvent) => at(ev.clientX);
+    const y0 = e.clientY, v0 = volume;
+    const move = (ev: PointerEvent) => setVol(v0 + (y0 - ev.clientY) / 12);
     const up = () => { el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); };
     el.addEventListener("pointermove", move);
     el.addEventListener("pointerup", up);
   };
-  const seekKey = (e: React.KeyboardEvent) => {
-    const a = audio.current;
-    if (!a || !duration) return;
-    const step = { ArrowRight: 5, ArrowUp: 5, ArrowLeft: -5, ArrowDown: -5, PageUp: 15, PageDown: -15 }[e.key];
-    if (step) { e.preventDefault(); seekTo((a.currentTime + step) / duration); }
-    if (e.key === "Home") { e.preventDefault(); seekTo(0); }
-    if (e.key === "End") { e.preventDefault(); seekTo(0.999); }
+  const knobKey = (e: React.KeyboardEvent) => {
+    const d = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1, PageUp: 3, PageDown: -3 }[e.key];
+    if (d) { e.preventDefault(); setVol(volume + d); }
+    if (e.key === "Home") { e.preventDefault(); setVol(0); }
+    if (e.key === "End") { e.preventDefault(); setVol(10); }
+  };
+  const knobRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = knobRef.current;
+    if (!el) return;
+    const w = (e: WheelEvent) => { e.preventDefault(); setVol(snap.current.volume + (e.deltaY < 0 ? 1 : -1)); };
+    el.addEventListener("wheel", w, { passive: false });
+    return () => el.removeEventListener("wheel", w);
+  });
+
+  /* ---------- screen: seek, song list ---------- */
+  const scroll = (d: number) => setListTop((t) => Math.max(0, Math.min(t + d, (album?.songs.length ?? 0) - LIST.vis)));
+  const dragged = useRef(0);
+  const screenClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (phase !== "in" || performance.now() - dragged.current < 250 || !screenEl.current) return;
+    const h = createScreenHit(screenEl.current, e.clientX, e.clientY);
+    const el = audio.current;
+    if (h.zone === "seek" && el) {
+      const d = Number.isFinite(el.duration) ? el.duration : 0;
+      if (d) { const nt = Math.max(0, Math.min(0.999, h.col / h.cols)) * d; fx.current.boost = 0.3; fx.current.dir = nt < el.currentTime ? -1 : 1; el.currentTime = nt; }
+    } else if (view === "list" && h.zone === "list") {
+      const n = listTop + h.listRow;
+      if (n >= 0 && n < album.songs.length) { wasPlaying.current = true; if (n === i) start(); else { fx.current.boost = 0.35; setI(n); } setView("main"); }
+    }
+  };
+  useEffect(() => {
+    const el = screenEl.current;
+    if (!el) return;
+    let acc = 0;
+    const w = (e: WheelEvent) => {
+      if (snap.current.view !== "list" || snap.current.phase !== "in") return;
+      e.preventDefault();
+      acc += e.deltaY;
+      if (Math.abs(acc) < 30) return;
+      scroll(Math.sign(acc)); acc = 0; sfx("tick");
+    };
+    el.addEventListener("wheel", w, { passive: false });
+    return () => el.removeEventListener("wheel", w);
+  });
+  const screenDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (view !== "list" || e.pointerType === "mouse") return;
+    const el = e.currentTarget, y0 = e.clientY, t0 = listTop;
+    let moved = false;
+    const move = (ev: PointerEvent) => { const d = Math.round((y0 - ev.clientY) / (9 * PITCH)); if (d) moved = true; setListTop(Math.max(0, Math.min(t0 + d, album.songs.length - LIST.vis))); };
+    const up = () => { el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); if (moved) dragged.current = performance.now(); };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+  };
+  const screenKey = (e: React.KeyboardEvent) => {
+    const el = audio.current;
+    if (view === "list" && (e.key === "ArrowUp" || e.key === "ArrowDown")) { e.preventDefault(); scroll(e.key === "ArrowDown" ? 1 : -1); return; }
+    const d = { ArrowRight: 5, ArrowLeft: -5 }[e.key];
+    if (d && el && Number.isFinite(el.duration)) { e.preventDefault(); el.currentTime = Math.max(0, Math.min(el.duration - 0.1, el.currentTime + d)); }
   };
 
-  const [line1, ...rest] = track.title.toUpperCase().split(" ");
+  if (!album || !song) return null;
+  const n = albums.length;
 
   return (
     <aside className="deck" data-open={open} data-wide={wide} aria-label="Music player">
-      <audio ref={audio} src={track.src} preload="none" />
+      <audio ref={audio} src={song.preview} preload="none" crossOrigin="anonymous" />
 
       {open && (
-        <div className="wm" id="deck-body">
-          <button type="button" className="wm-card" onClick={() => go(1)} aria-label="Change tape (next track)">
-            <span className="wm-card-label">{String(index + 1).padStart(2, "0")}</span>
-          </button>
+        <div className="wm" id="deck-body" data-card={phase} data-tray={tray ? "open" : "closed"} data-playing={playing} style={{ "--card": album.color, "--v": volume / 10, "--pcb": PCB } as React.CSSProperties}>
+          <div className="wm-wrap" ref={wrapEl}>
+            <div className="tray" role="dialog" aria-label="Choose an SD card" aria-hidden={!tray}>
+              <div className="tray-head"><span>SD CARDS</span><button type="button" onClick={() => insert(a)}>Put it back</button></div>
+              <div className="fan" ref={fanEl}>
+                {albums.map((al, k) => (
+                  <button key={al.key} type="button" className="slotcard" data-n={k} data-hidden={hidden === k} data-last={last === k} onClick={() => insert(k)} aria-label={`Load ${al.name}`}
+                    style={{ "--rot": `${(k - (n - 1) / 2) * 6}deg`, "--lift": `${Math.abs(k - (n - 1) / 2) * 3}px` } as React.CSSProperties}>
+                    <span className="sd"><SdCard name={al.name} seed={al.key} color={al.color} arts={al.arts} width={46} /></span>
+                    <small>{al.short} · {al.songs.length}</small>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <button type="button" className="sd sd-slot" ref={slotEl} onClick={eject} aria-label={`Eject SD card (${album.name})`}>
+              <SdCard name={album.name} seed={album.key} color={album.color} arts={album.arts} width={60} />
+            </button>
 
-          <div className="wm-body">
-            <div className="wm-bezel">
-              <div className="wm-lcd" aria-live="polite">
-                {aod && !list ? (
-                  <div className="lcd-aod">
-                    <Cover id={track.id} px={48} className="lcd-art lcd-art-big" />
-                    <div className="lcd-aod-title">
-                      <span>{line1}</span>
-                      {rest.length > 0 && <span>{rest.join(" ")}</span>}
-                      <span className="lcd-dim">{track.artist.toUpperCase()}</span>
-                    </div>
+            <div className="wm-body">
+              <div className="bezel">
+                <div className="lcd">
+                  <canvas ref={screenEl} className="screen" tabIndex={0} role="img" aria-label={`${song.title} by ${song.artist}, ${album.name}. ${fmt(time)}`}
+                    onClick={screenClick} onPointerDown={screenDown} onKeyDown={screenKey} />
+                </div>
+              </div>
+              <div className="print"><i className="screw" style={{ "--r": "28deg" } as React.CSSProperties} /><span>JX-01</span><span className="sp" /><span>AUTO REVERSE</span><i className="screw" style={{ "--r": "-14deg" } as React.CSSProperties} /></div>
+              <div className="cass" ref={cassEl}>
+                <i className="screw c-tl" style={{ "--r": "12deg" } as React.CSSProperties} /><i className="screw c-tr" style={{ "--r": "-30deg" } as React.CSSProperties} />
+                <i className="screw c-bl" style={{ "--r": "40deg" } as React.CSSProperties} /><i className="screw c-br" style={{ "--r": "5deg" } as React.CSSProperties} />
+                <div className="cl">
+                  <div className="cl-top"><b>A</b><span>STEREO</span><span>NOISE RED.</span><span className="no">NO.</span></div>
+                  <div className="cl-hand">{album.hand}</div>
+                  <div className="cl-mid">
+                    <span className="cl-len">30</span>
+                    <div className="cl-band"><div className="cl-win"><canvas ref={reelsEl} /></div></div>
+                    <span className="cl-type">TYPE I</span>
                   </div>
-                ) : (
-                  <>
-                    <div className="lcd-status">
-                      <span className="lcd-state" role="img" aria-label={status}>{playing ? <Ic d={I.play} fill size={11} /> : <Ic d={I.pause} size={11} />}</span>
-                      <span className="lcd-meta">
-                        {repeat && <span>RPT</span>}
-                        {shuffle && <span>SHF</span>}
-                        <span className="lcd-dim">{index + 1}/{tracks.length}</span>
-                        <span>VOL {String(volume).padStart(2, "0")}</span>
-                        <span className="lcd-batt" aria-hidden="true"><i /><i /><i /></span>
-                      </span>
-                    </div>
-                    {list ? (
-                      <ol className="lcd-list">
-                        {tracks.map((t, i) => (
-                          <li key={t.id}>
-                            <button type="button" aria-current={i === index ? "true" : undefined} onClick={() => { wasPlaying.current = true; if (i === index) play(); else setIndex(i); setList(false); }}>
-                              <span>{i === index ? ">" : " "}{String(i + 1).padStart(2, "0")}</span> {t.title.toUpperCase()}
-                            </button>
-                          </li>
-                        ))}
-                      </ol>
-                    ) : (
-                      <div className="lcd-main">
-                        <Cover id={track.id} px={40} className="lcd-art" />
-                        <div className="lcd-text">
-                          <div className="lcd-title"><span data-run={playing && track.title.length > 9}>{track.title.toUpperCase()}</span></div>
-                          <div className="lcd-artist">{track.artist.toUpperCase()}</div>
-                          <div className="lcd-album lcd-dim">TAPES</div>
-                          <canvas ref={viz} className="lcd-viz" width={84} height={12} aria-hidden="true" />
-                        </div>
-                      </div>
-                    )}
-                    <div
-                      className="lcd-seek"
-                      role="slider"
-                      tabIndex={0}
-                      aria-label="Seek"
-                      aria-valuemin={0}
-                      aria-valuemax={Math.round(duration) || 0}
-                      aria-valuenow={Math.round(time)}
-                      aria-valuetext={`${fmt(time)} of ${fmt(duration)}`}
-                      onPointerDown={seekPointer}
-                      onKeyDown={seekKey}
-                    >
-                      <span className="lcd-seek-line" />
-                      <span className="lcd-seek-head" style={{ left: `${progress * 100}%` }} />
-                    </div>
-                    <div className="lcd-times">
-                      <span>{fmt(time)}</span>
-                      <span>{duration ? `-${fmt(duration - time)}` : "-0:00"}</span>
-                    </div>
-                  </>
-                )}
-                {status === "error" && <div className="lcd-err">TAPE ERROR</div>}
+                  <div className="cl-foot"><span className="cl-brand">JX</span><span className="cl-model">C-30 · PREVIEW</span></div>
+                  <span className="cl-tag">side A</span>
+                </div>
+                <div className="cass-low" aria-hidden="true"><i className="hole" /><i className="sq" /><i className="sq" /><i className="hole" /></div>
               </div>
-            </div>
-
-            <div className="wm-mid">
-              <span className="wm-led" data-on={playing} aria-hidden="true" />
-              <span className="wm-grille" aria-hidden="true" />
-              <button type="button" className="wm-power" onClick={() => setAod((v) => !v)} aria-pressed={aod} aria-label="Always-on display">
-                <Ic d={I.power} size={12} />
-              </button>
-            </div>
-
-            <div className="wm-deck">
-              <span className="wm-screw" data-p="tl" /><span className="wm-screw" data-p="tr" /><span className="wm-screw" data-p="bl" /><span className="wm-screw" data-p="br" />
-              <span className="wm-holes" aria-hidden="true" />
-              <div className="wm-quad">
-                <button type="button" className="wm-k" aria-pressed={repeat} aria-label="Repeat" onClick={() => setRepeat((v) => !v)}><Ic d={I.repeat} size={14} /></button>
-                <button type="button" className="wm-k" aria-pressed={shuffle} aria-label="Shuffle" onClick={() => setShuffle((v) => !v)}><Ic d={I.shuffle} size={14} /></button>
-                <button type="button" className="wm-k" aria-pressed={list} aria-label="Playlist" onClick={() => setList((v) => !v)}><Ic d={I.list} size={14} /></button>
-                <button type="button" className="wm-k" aria-pressed={liked} aria-label="Like" onClick={() => setLikes((l) => (l.includes(track.id) ? l.filter((x) => x !== track.id) : [...l, track.id]))}><Ic d={I.heart} fill={liked} size={14} /></button>
+              <div className="ctrl">
+                <div className="modes">
+                  <button type="button" className="ks" aria-pressed={rpt} aria-label="Repeat" onClick={() => setRpt((v) => !v)}><Ic d={I.repeat} size={12} /></button>
+                  <button type="button" className="ks" aria-pressed={shf} aria-label="Shuffle" onClick={() => setShf((v) => !v)}><Ic d={I.shuffle} size={12} /></button>
+                  <button type="button" className="ks" aria-pressed={view === "list"} aria-label="Song list" onClick={() => { setView((v) => (v === "list" ? "main" : "list")); setListTop(Math.max(0, Math.min(i - 1, album.songs.length - LIST.vis))); }}><Ic d={I.list} size={12} /></button>
+                  <button type="button" className="ks" aria-pressed={liked} aria-label="Like" onClick={() => setLikes((l) => (l.includes(song.id) ? l.filter((x) => x !== song.id) : [...l, song.id]))}><Ic d={I.heart} fill={liked} size={12} /></button>
+                </div>
+                <div className="trans">
+                  <button type="button" onClick={() => go(-1)} aria-label="Previous song"><Ic d={I.prev} size={14} /></button>
+                  <button type="button" className="play" onClick={toggle} aria-label={playing ? "Pause" : "Play"}><Ic d={playing ? I.pause : I.play} size={18} /></button>
+                  <button type="button" onClick={() => go(1)} aria-label="Next song"><Ic d={I.next} size={14} /></button>
+                </div>
+                <div className="knob" ref={knobRef} role="slider" tabIndex={0} aria-label="Volume" aria-valuemin={0} aria-valuemax={100} aria-valuenow={volume * 10} aria-valuetext={`${volume * 10}%`} onPointerDown={knobDown} onKeyDown={knobKey}>
+                  <svg className="k-scale" viewBox="0 0 72 72" aria-hidden="true">
+                    {Array.from({ length: 11 }, (_, k) => { const ang = ((-135 + k * 27) * Math.PI) / 180; return <circle key={k} className={`k-dot${k <= volume && volume > 0 ? " on" : ""}`} cx={(36 + 32 * Math.sin(ang)).toFixed(2)} cy={(36 - 32 * Math.cos(ang)).toFixed(2)} r="1.5" />; })}
+                  </svg>
+                  <span className="k-well" /><span className="k-skirt" /><span className="k-light" /><span className="k-cap" /><span className="k-ind"><i /></span>
+                </div>
               </div>
-              <div className="wm-transport">
-                <button type="button" className="wm-t" onClick={() => go(-1)} aria-label="Previous track"><Ic d={I.prev} size={14} /></button>
-                <button type="button" className="wm-t wm-t-main" onClick={toggle} aria-label={playing ? "Pause" : "Play"}><Ic d={playing ? I.pause : I.play} size={18} /></button>
-                <button type="button" className="wm-t" onClick={() => go(1)} aria-label="Next track"><Ic d={I.next} size={14} /></button>
-              </div>
-              <Knob value={volume} onChange={setVolume} />
             </div>
           </div>
+          <p className="wm-credit">30-second previews from <a href={song.url || album.url} target="_blank" rel="noopener noreferrer">Apple Music</a> · <a href={song.url || album.url} target="_blank" rel="noopener noreferrer">full song ↗</a></p>
         </div>
       )}
 
@@ -357,10 +452,10 @@ export default function Walkman() {
             <Ic d={playing ? I.pause : I.play} fill={!playing} size={14} />
           </button>
           <button type="button" className="dock-info" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls="deck-body">
-            <Cover id={track.id} px={20} className="dock-art" />
+            <span className="dock-art" style={{ backgroundImage: `url(${song.art})` }} aria-hidden="true" />
             <span className="dock-text">
-              <span className="dock-title">{track.title}</span>
-              <span className="dock-sub">{status === "error" ? "Couldn't load tape" : playing ? fmt(time) : "Walkman"}</span>
+              <span className="dock-title">{song.title}</span>
+              <span className="dock-sub">{status === "error" ? "Preview unavailable" : playing ? `${fmt(time)} · ${song.artist}` : song.artist}</span>
             </span>
             <span className="dock-chev" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">{open ? <path d="M4 6l4 4 4-4" /> : <path d="M4 10l4-4 4 4" />}</svg></span>
             <span className="sr-only">{open ? "Close player" : "Open player"}</span>
@@ -371,37 +466,39 @@ export default function Walkman() {
   );
 }
 
-function Knob({ value, onChange }: { value: number; onChange: (v: number) => void }) {
-  const set = (v: number) => onChange(Math.max(0, Math.min(10, Math.round(v))));
-  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    const el = e.currentTarget;
-    el.setPointerCapture(e.pointerId);
-    const y0 = e.clientY, v0 = value;
-    const move = (ev: PointerEvent) => set(v0 + (y0 - ev.clientY) / 10);
-    const up = () => { el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); };
-    el.addEventListener("pointermove", move);
-    el.addEventListener("pointerup", up);
-  };
-  const onKey = (e: React.KeyboardEvent) => {
-    const d = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1, PageUp: 3, PageDown: -3 }[e.key];
-    if (d) { e.preventDefault(); set(value + d); }
-    if (e.key === "Home") { e.preventDefault(); set(0); }
-    if (e.key === "End") { e.preventDefault(); set(10); }
-  };
-  const angle = -135 + value * 27;
-  return (
-    <div className="wm-knob" role="slider" tabIndex={0} aria-label="Volume" aria-valuemin={0} aria-valuemax={10} aria-valuenow={value}
-      onPointerDown={onPointerDown} onKeyDown={onKey} onWheel={(e) => set(value + (e.deltaY < 0 ? 1 : -1))}>
-      <svg viewBox="0 0 60 60" aria-hidden="true">
-        <circle cx="30" cy="30" r="28" className="knob-well" />
-        <g style={{ transform: `rotate(${angle}deg)`, transformOrigin: "30px 30px", transition: "transform 120ms" }}>
-          {Array.from({ length: 60 }, (_, i) => (
-            <rect key={i} x="29.6" y="4" width="0.8" height="4" className="knob-knurl" transform={`rotate(${i * 6} 30 30)`} />
-          ))}
-          <circle cx="30" cy="30" r="20" className="knob-cap" />
-          <rect x="29" y="12" width="2" height="8" rx="1" className="knob-mark" />
-        </g>
-      </svg>
-    </div>
-  );
+/** An original circuit board seen faintly through the frosted shell. Seeded, so it is identical on server and client. */
+function buildBoard() {
+  const W = 312, H = 620, G = 6;
+  let seed = 7;
+  const r = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const snap = (v: number) => Math.round(v / G) * G;
+  let traces = "", pads = "", parts = "";
+  for (let k = 0; k < 70; k++) {
+    let x = snap(r() * W), y = snap(r() * H), d = `M${x} ${y}`;
+    for (let s = 0, n = 3 + Math.floor(r() * 3); s < n; s++) {
+      const len = snap(12 + r() * 60), dir = Math.floor(r() * 4);
+      if (dir === 0) x += len; else if (dir === 1) y += len; else if (dir === 2) { x += len * 0.7; y += len * 0.7; } else { x -= len * 0.7; y += len * 0.7; }
+      d += ` L${x.toFixed(0)} ${y.toFixed(0)}`;
+    }
+    traces += `<path d="${d}"/>`;
+    pads += `<circle cx="${x.toFixed(0)}" cy="${y.toFixed(0)}" r="2.2"/>`;
+  }
+  for (let k = 0; k < 9; k++) {
+    const w = snap(24 + r() * 40), hh = snap(18 + r() * 30), x = snap(10 + r() * (W - w - 20)), y = snap(10 + r() * (H - hh - 20));
+    let pins = "";
+    for (let p = x + 4; p < x + w - 2; p += 4) pins += `<rect x="${p}" y="${y - 3}" width="2" height="3"/><rect x="${p}" y="${y + hh}" width="2" height="3"/>`;
+    parts += `<rect x="${x}" y="${y}" width="${w}" height="${hh}" rx="1.5" fill="#1b1d22"/><g fill="#a8adb5">${pins}</g>`;
+  }
+  for (let k = 0; k < 40; k++) { const x = snap(r() * W), y = snap(r() * H), v = r() > 0.5; parts += `<rect x="${x}" y="${y}" width="${v ? 3 : 6}" height="${v ? 6 : 3}" fill="${r() > 0.5 ? "#2a2d33" : "#7b6a52"}"/>`; }
+  const holes = [[14, 14], [W - 14, 14], [14, H - 14], [W - 14, H - 14]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="5" fill="none" stroke="#b5bac2" stroke-width="2"/>`).join("");
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><defs><filter id="f" x="-5%" y="-5%" width="110%" height="110%"><feGaussianBlur stdDeviation="0.9"/></filter></defs><rect width="${W}" height="${H}" fill="#3c4148"/><g filter="url(#f)"><g fill="none" stroke="#8d939c" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">${traces}</g><g fill="#b5bac2">${pads}</g>${parts}${holes}<text x="${W - 70}" y="${H - 30}" font-family="monospace" font-size="7" fill="#c9ccd2">JX-01 REV.B</text></g></svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+}
+const PCB = buildBoard();
+
+// hit-testing without keeping a second screen instance around
+let hitScreen: ReturnType<typeof createScreen> | null = null, hitCanvas: HTMLCanvasElement | null = null;
+function createScreenHit(canvas: HTMLCanvasElement, x: number, y: number) {
+  if (hitCanvas !== canvas) { hitScreen = createScreen(canvas); hitCanvas = canvas; }
+  return hitScreen!.hit(x, y);
 }

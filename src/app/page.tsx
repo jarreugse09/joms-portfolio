@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { experience, person, projects, stack, type Experience } from "@/content/site";
 import { getContributions } from "@/lib/github";
+import { getAlbums } from "@/lib/albums";
 import { EyeAside, EyeHero } from "@/components/AsciiEye";
 import { ProjectsView } from "@/components/ProjectsView";
 import { Header, Visitors } from "@/components/Chrome";
@@ -92,7 +93,7 @@ function XpEntry({ x }: { x: Experience }) {
 }
 
 export default async function Home() {
-  const years = await getContributions();
+  const [years, albums] = await Promise.all([getContributions(), getAlbums()]);
   const thisYear = years[0];
   const jsonLd = {
     "@context": "https://schema.org",
@@ -309,7 +310,7 @@ export default async function Home() {
       </footer>
 
       <EyeAside />
-      <Walkman />
+      <Walkman albums={albums} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
     </div>
   );

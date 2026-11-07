@@ -174,8 +174,22 @@ export const stack = [
   { group: "Tools", items: ["Git", "Linux", "Vercel", "Render"] },
 ] as const;
 
-export const tracks = [
-  { id: "harbor-lights", title: "Harbor Lights", artist: "jomariexe", src: "/audio/harbor-lights.wav" },
-  { id: "night-compile", title: "Night Compile", artist: "jomariexe", src: "/audio/night-compile.wav" },
-  { id: "low-tide", title: "Low Tide", artist: "jomariexe", src: "/audio/low-tide.wav" },
-] as const;
+/**
+ * SD cards in the walkman. Songs, lengths and covers come from Apple Music's catalogue
+ * (src/lib/albums.ts); the player streams Apple's official 30-second previews. No audio is hosted.
+ * collectionId = a whole album; trackIds = hand-picked songs (original recordings) in this order.
+ */
+export type AlbumCard = { key: string; short: string; hand: string; color: string; name?: string; collectionId?: number; trackIds?: number[] };
+// Owner's picks (2026-11-07). Songs missing from the US store are looked up in the Philippine store.
+export const albums: AlbumCard[] = [
+  // Michael Jackson, Thriller (1982, original 9-track album)
+  { key: "thriller", short: "Thriller", hand: "MJ · Thriller", color: "#c8141b", collectionId: 269572838 },
+  // Hero's Come Back!!, Blue Bird, Closer, Sign, Diver, newsong, Silhouette, Blood Circulator
+  { key: "shippuden", name: "Shippuden Openings", short: "Shippuden", hand: "Shippuden · openings", color: "#101114", trackIds: [1536898529, 1089186523, 394731050, 1536382006, 673586565, 1537248451, 1538157315, 1536461315] },
+  // Odo, Backlight, Usseewa, Take Me to the Beach (Imagine Dragons feat. Ado)
+  { key: "ado", name: "Ado", short: "Ado", hand: "Ado · picks", color: "#2f3d57", trackIds: [1562772211, 1636446964, 1535123742, 1783452556] },
+  // Oo, Tadhana, Unti-Unti, Sigurado
+  { key: "udd", name: "Up Dharma Down", short: "UDD", hand: "Up Dharma Down", color: "#5a3fd1", trackIds: [1623885965, 1623878835, 1623885397, 1194266450] },
+  // Slave to the Rhythm (MJ), Orasa (Dilaw), Kalawakan (juan karlos), VISA (SB19), Since Day One (Skusta Clee)
+  { key: "singles", name: "Singles", short: "Singles", hand: "Singles", color: "#7d838e", trackIds: [850697803, 1703728429, 1485359560, 1874942275, 1874403321] },
+];
