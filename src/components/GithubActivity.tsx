@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Year } from "@/lib/github";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -8,6 +8,9 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 export default function GithubActivity({ years, user }: { years: Year[]; user: string }) {
   const [sel, setSel] = useState(years[0]?.year);
   const y = years.find((v) => v.year === sel);
+  const scroller = useRef<HTMLDivElement>(null);
+  // on narrow screens start scrolled to the newest week
+  useEffect(() => { const el = scroller.current; if (el) el.scrollLeft = el.scrollWidth; }, [sel]);
   if (!y) return <p className="cap">GitHub activity is unavailable right now.</p>;
 
   // place days in week columns (Sunday first), padding the first week
@@ -34,7 +37,7 @@ export default function GithubActivity({ years, user }: { years: Year[]; user: s
                 className={v.year === sel ? "text-ink font-semibold" : "text-faint hover:text-ink"}
                 onClick={() => setSel(v.year)}
               >
-                {v.year}
+                {v.label ?? v.year}
               </button>
             </span>
           ))}
@@ -42,10 +45,10 @@ export default function GithubActivity({ years, user }: { years: Year[]; user: s
         </div>
       </div>
 
-      <div className="gh-scroll mt-4">
+      <div className="gh-scroll mt-4" ref={scroller}>
         <div className="gh" style={{ gridTemplateColumns: `repeat(${weeks}, var(--gh-cell))` }}>
           {monthAt.map(({ m, w }) => (
-            <span key={m} className="gh-month" style={{ gridColumn: `${w + 1} / span 4` }}>{MONTHS[m]}</span>
+            <span key={w} className="gh-month" style={{ gridColumn: `${w + 1} / span 4` }}>{MONTHS[m]}</span>
           ))}
           {cells.map((d, i) =>
             d ? (
@@ -62,7 +65,7 @@ export default function GithubActivity({ years, user }: { years: Year[]; user: s
       </div>
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2 font-mono text-[11px] uppercase tracking-[0.08em] text-faint">
-        <span><b className="text-ink font-semibold">{y.total.toLocaleString()}</b> contributions · {y.year}</span>
+        <span><b className="text-ink font-semibold">{y.total.toLocaleString()}</b> contributions · {y.label ?? y.year}</span>
         <span className="flex items-center gap-1" aria-hidden="true">
           less {[0, 1, 2, 3, 4].map((l) => <span key={l} className="gh-day gh-legend" data-l={l} />)} more
         </span>

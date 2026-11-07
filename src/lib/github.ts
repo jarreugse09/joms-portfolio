@@ -1,12 +1,14 @@
 import { cacheLife } from "next/cache";
 
 export type Day = { date: string; count: number; level: number };
-export type Year = { year: number; total: number; days: Day[] };
+/** label: shown instead of the year; set on the rolling "past year" entry. */
+export type Year = { year: number; label?: string; total: number; days: Day[] };
 
 const USER = "jarreugse09";
 const FIRST_YEAR = 2022; // account created Sept 2022
 
-/** Public GitHub contribution calendar, parsed from github.com at build time and refreshed daily. */
+/** Public GitHub contribution calendar, parsed from github.com at build time and refreshed daily.
+ *  The first entry is the past 12 months ending today (like a GitHub profile); older entries are full calendar years. */
 export async function getContributions(): Promise<Year[]> {
   "use cache";
   cacheLife("days");
@@ -14,7 +16,8 @@ export async function getContributions(): Promise<Year[]> {
   const years: Year[] = [];
   for (let y = now; y >= FIRST_YEAR; y--) {
     try {
-      const res = await fetch(`https://github.com/users/${USER}/contributions?from=${y}-01-01&to=${y}-12-31`, {
+      const range = y === now ? "" : `?from=${y}-01-01&to=${y}-12-31`;
+      const res = await fetch(`https://github.com/users/${USER}/contributions${range}`, {
         headers: { "User-Agent": "jomariexe-portfolio" },
       });
       if (!res.ok) continue;
@@ -29,7 +32,7 @@ export async function getContributions(): Promise<Year[]> {
         days.push({ date: m[1], level: Number(m[3]), count: counts.get(m[2]) ?? 0 });
       }
       days.sort((a, b) => a.date.localeCompare(b.date));
-      years.push({ year: y, total: days.reduce((s, d) => s + d.count, 0), days });
+      years.push({ year: y, label: y === now ? "past year" : undefined, total: days.reduce((s, d) => s + d.count, 0), days });
     } catch {}
   }
   return years;

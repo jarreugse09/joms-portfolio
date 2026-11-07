@@ -190,7 +190,7 @@ export default async function Home() {
 
         <Row className="stats" label="Numbers">
           <div className="stat"><div className="stat-n">{projects.length}</div><div className="stat-l mono-label">projects shipped</div></div>
-          <div className="stat"><div className="stat-n">{thisYear ? thisYear.total.toLocaleString() : "—"}</div><div className="stat-l mono-label">contributions {thisYear?.year ?? ""}</div></div>
+          <div className="stat"><div className="stat-n">{thisYear ? thisYear.total.toLocaleString() : "—"}</div><div className="stat-l mono-label">contributions {thisYear?.label ?? thisYear?.year ?? ""}</div></div>
         </Row>
 
         <Hatch />
