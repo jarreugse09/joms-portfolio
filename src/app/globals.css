@@ -112,7 +112,7 @@ input, textarea { caret-color: var(--red); }
 
 /* ---------- the eye ---------- */
 .ascii-canvas { display: block; }
-.sightline { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 35; opacity: 0; transition: opacity var(--mid) var(--ease); overflow: visible; }
+.sightline { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 55; opacity: 0; transition: opacity var(--mid) var(--ease); overflow: visible; }
 .sightline line { stroke-width: 1; stroke-linecap: round; stroke-dasharray: 3 4; animation: sight-march 1s linear infinite; }
 @keyframes sight-march { to { stroke-dashoffset: -22; } }
 @media (prefers-reduced-motion: reduce) { .sightline line { animation: none; } }

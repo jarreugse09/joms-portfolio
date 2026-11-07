@@ -1,5 +1,6 @@
 "use client";
 
+import { createPortal } from "react-dom";
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { on } from "@/lib/bus";
 
@@ -258,7 +259,8 @@ function Eye({ size = 240 }: { size?: number }) {
   return (
     <>
       <canvas ref={cvs} className="ascii-canvas font-mono" aria-hidden="true" />
-      <svg ref={line} className="sightline" aria-hidden="true" />
+      {/* on <body> so it can sit above the walkman; inside the fixed eye panel it is capped at the panel's layer */}
+      {createPortal(<svg ref={line} className="sightline" aria-hidden="true" />, document.body)}
     </>
   );
 }
