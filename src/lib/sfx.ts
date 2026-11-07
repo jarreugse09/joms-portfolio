@@ -51,13 +51,22 @@ function tone(ac: AudioContext, freq: number, peak: number, decay: number, at = 
   o.start(t); o.stop(t + decay + 0.03);
 }
 
-export function play(kind: "hover" | "press" | "toggle") {
+export type Sfx = "hover" | "press" | "toggle" | "eject" | "drop" | "lift" | "insert" | "read" | "tick";
+
+export function play(kind: Sfx) {
   // never create the AudioContext here: creating one is slow, so only a click/key (unlock) does it
   const ac = ctx;
   if (!enabled || !ac || ac.state !== "running") return;
   if (kind === "hover") { noise(ac, 5200, 1.8, 0.22, 0.02); tone(ac, 2600, 0.025, 0.012); }
   if (kind === "press") { noise(ac, 1700, 1.4, 0.3, 0.025); }
   if (kind === "toggle") { noise(ac, 2200, 1.6, 0.25, 0.018); noise(ac, 3800, 1.6, 0.2, 0.02, 0.024); }
+  // walkman SD card: spring-out click, drop into tray, lift, click-in thunk, two read beeps
+  if (kind === "eject") { noise(ac, 2600, 1.4, 0.4, 0.03); tone(ac, 760, 0.04, 0.12, 0.02); }
+  if (kind === "drop") { noise(ac, 1800, 1.4, 0.3, 0.025); }
+  if (kind === "lift") { tone(ac, 820, 0.03, 0.08); }
+  if (kind === "insert") { noise(ac, 900, 1.1, 0.5, 0.04); tone(ac, 150, 0.05, 0.1); noise(ac, 3000, 1.6, 0.3, 0.02, 0.06); }
+  if (kind === "read") { tone(ac, 1320, 0.025, 0.05, 0.12); tone(ac, 1760, 0.025, 0.07, 0.24); }
+  if (kind === "tick") { noise(ac, 4200, 2, 0.16, 0.012); }
 }
 
 /** Wire delegated listeners once for the whole page. */
