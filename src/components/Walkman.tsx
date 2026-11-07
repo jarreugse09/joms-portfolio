@@ -346,8 +346,8 @@ export default function Walkman({ albums }: { albums: Album[] }) {
     if (!el) return;
     let acc = 0;
     const w = (e: WheelEvent) => {
+      e.preventDefault(); // the wheel belongs to the screen, never the page
       if (snap.current.view !== "list" || snap.current.phase !== "in") return;
-      e.preventDefault();
       acc += e.deltaY;
       if (Math.abs(acc) < 30) return;
       scroll(Math.sign(acc)); acc = 0; sfx("tick");
@@ -400,7 +400,7 @@ export default function Walkman({ albums }: { albums: Album[] }) {
             <div className="wm-body">
               <div className="bezel">
                 <div className="lcd">
-                  <canvas ref={screenEl} className="screen" tabIndex={0} role="img" aria-label={`${song.title} by ${song.artist}, ${album.name}. ${fmt(time)}`}
+                  <canvas ref={screenEl} className="screen" data-lenis-prevent tabIndex={0} role="img" aria-label={`${song.title} by ${song.artist}, ${album.name}. ${fmt(time)}`}
                     onClick={screenClick} onPointerDown={screenDown} onKeyDown={screenKey} />
                 </div>
               </div>
@@ -433,7 +433,7 @@ export default function Walkman({ albums }: { albums: Album[] }) {
                   <button type="button" className="play" onClick={toggle} aria-label={playing ? "Pause" : "Play"}><Ic d={playing ? I.pause : I.play} size={18} /></button>
                   <button type="button" onClick={() => go(1)} aria-label="Next song"><Ic d={I.next} size={14} /></button>
                 </div>
-                <div className="knob" ref={knobRef} role="slider" tabIndex={0} aria-label="Volume" aria-valuemin={0} aria-valuemax={100} aria-valuenow={volume * 10} aria-valuetext={`${volume * 10}%`} onPointerDown={knobDown} onKeyDown={knobKey}>
+                <div className="knob" ref={knobRef} data-lenis-prevent role="slider" tabIndex={0} aria-label="Volume" aria-valuemin={0} aria-valuemax={100} aria-valuenow={volume * 10} aria-valuetext={`${volume * 10}%`} onPointerDown={knobDown} onKeyDown={knobKey}>
                   <svg className="k-scale" viewBox="0 0 72 72" aria-hidden="true">
                     {Array.from({ length: 11 }, (_, k) => { const ang = ((-135 + k * 27) * Math.PI) / 180; return <circle key={k} className={`k-dot${k <= volume && volume > 0 ? " on" : ""}`} cx={(36 + 32 * Math.sin(ang)).toFixed(2)} cy={(36 - 32 * Math.cos(ang)).toFixed(2)} r="1.5" />; })}
                   </svg>
