@@ -209,6 +209,9 @@ input, textarea { caret-color: var(--red); }
 .proj-links a:hover { color: var(--ink); }
 .proj p { margin-top: 8px; font-size: 14px; color: var(--muted); }
 .proj .icon-row { margin-top: auto; padding-top: 14px; }
+.proj-points { margin-top: 10px; display: grid; gap: 6px; font-size: 13px; line-height: 1.5; color: var(--muted); }
+.proj-points li { position: relative; padding-left: 14px; }
+.proj-points li::before { content: ""; position: absolute; left: 2px; top: .6em; width: 5px; height: 5px; background: var(--red); }
 .view-toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; padding: 2px; gap: 2px; }
 .view-toggle button { display: grid; place-items: center; width: 26px; height: 24px; border-radius: 6px; color: var(--faint); transition: color var(--fast) var(--ease), background var(--fast) var(--ease); }
 .view-toggle button:hover { color: var(--ink); }
@@ -216,7 +219,7 @@ input, textarea { caret-color: var(--red); }
 .proj-grid[data-view="list"] { grid-template-columns: 1fr; }
 .proj-grid[data-view="list"] .proj { display: grid; grid-template-columns: 168px 1fr; column-gap: 18px; align-content: start; border-right: 0; border-top: 1px solid var(--line); }
 .proj-grid[data-view="list"] .proj:first-child { border-top: 0; }
-.proj-grid[data-view="list"] .shot { grid-row: 1 / span 3; align-self: start; }
+.proj-grid[data-view="list"] .shot { grid-row: 1 / span 4; align-self: start; }
 .proj-grid[data-view="list"] .proj-head { margin-top: 0; }
 .proj-grid[data-view="list"] .proj p { margin-top: 4px; }
 .proj-grid[data-view="list"] .proj .icon-row { padding-top: 10px; }

@@ -85,11 +85,48 @@ export type Project = {
   width: number;
   height: number;
   stack: string[];
+  points?: string[]; // key engineering facts, shown as bullets
   live?: string;
   repo?: string;
 };
 
 export const projects: Project[] = [
+  {
+    slug: "furodachi",
+    name: "Furodachi",
+    tagline: "Offline-first pet care PWA",
+    description:
+      "An installable, offline-first app for pet identity and care: profiles, health records, care schedules, and a QR tag that helps bring lost pets home. Private by design, not a social network.",
+    image: "/images/projects/furodachi.webp",
+    width: 1600, height: 1000,
+    stack: ["TypeScript", "React", "Vite", "PWA", "Supabase", "PostgreSQL", "Leaflet", "ONNX", "Vitest", "Vercel"],
+    points: [
+      "Offline-first: IndexedDB (Dexie) is the app's source of truth and syncs to Supabase Postgres when online; Row-Level Security policies are tested in CI on PGlite.",
+      "Lost-pet recovery: each pet's Pawport ID card carries a QR tag that opens a public finder page, where anyone can report a sighting with GPS location, no account needed; the owner sees it on an OpenStreetMap map with directions.",
+      "Runs a U2-Net model in the browser with ONNX Runtime Web to cut pets out of photos for sticker-style profiles, entirely on-device.",
+      "Care planner with reminders and push alerts, health records, quarterly growth photos, expenses, family and caregiver sharing, and a vet role.",
+      "WCAG 2.1 AA checked with axe on every main screen in six themes; Playwright end-to-end tests at phone, tablet, and desktop widths and offline.",
+    ],
+    live: "https://furodachi.vercel.app/",
+  },
+  {
+    slug: "liftism",
+    name: "Liftism",
+    tagline: "Gamified fitness tracker PWA",
+    description:
+      "An offline-first fitness tracker with a game layer that rewards showing up: XP levels, a consistency rank, streaks, quests, and a mascot trainer. Rest days never cost you.",
+    image: "/images/projects/liftism.webp",
+    width: 1600, height: 1000,
+    stack: ["TypeScript", "React Native", "Expo", "PWA", "SQLite", "Drizzle", "Supabase", "Jest", "Vercel"],
+    points: [
+      "One Expo / React Native codebase ships as an installable, offline PWA and a native app; data lives on the device in SQLite through Drizzle ORM (IndexedDB in the browser).",
+      "Sign-in with an emailed 6-digit code or Google (Supabase), automatic backup of changed rows, and two-way sync across devices where the newer edit wins, enforced in the cloud too.",
+      "Workout logging with rest timer, supersets, warm-up sets, and a plate calculator; a rule-based routine generator built from goal, experience, days, equipment, split, and session length.",
+      "Every workout earns rank points from what it achieved, followed by an animated victory sequence and a shareable 1080×1920 story image.",
+      "Muscle heatmap built from logged training volume, plus nutrition, water, and body-weight tracking; domain logic covered by 100+ Jest test files.",
+    ],
+    live: "https://liftism.vercel.app/",
+  },
   {
     slug: "setmona",
     name: "Setmona",

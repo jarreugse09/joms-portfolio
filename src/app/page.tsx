@@ -251,6 +251,7 @@ export default async function Home() {
                   </span>
                 </div>
                 <p>{p.description}</p>
+                {p.points && <ul className="proj-points">{p.points.map((t) => <li key={t}>{t}</li>)}</ul>}
                 <IconRow items={p.stack} />
               </article>
             ))}
