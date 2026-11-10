@@ -1,7 +1,8 @@
 import {
   siCss, siExpress, siFacebook, siFlask, siGit, siGithub, siGmail, siGooglegemini, siHtml5, siInstagram,
   siJavascript, siLinux, siMongodb, siMysql, siNextdotjs, siNodedotjs, siPython, siReact, siRender,
-  siTailwindcss, siTypescript, siVercel, siYolo,
+  siTailwindcss, siTypescript, siVercel, siYolo, siSupabase, siVite, siExpo, siPwa, siPostgresql, siLeaflet,
+  siOnnx, siVitest, siSqlite, siDrizzle, siJest,
 } from "simple-icons";
 
 type Icon = { title: string; path: string; hex: string };
@@ -22,6 +23,8 @@ const MAP: Record<string, Icon> = {
   "Tailwind CSS": siTailwindcss, HTML: siHtml5, CSS: siCss, "Node.js": siNodedotjs, Express: siExpress,
   MongoDB: siMongodb, MySQL: siMysql, Python: siPython, Flask: siFlask, YOLO: siYolo, "Gemini AI": siGooglegemini,
   Git: siGit, Linux: siLinux, Vercel: siVercel, Render: siRender,
+  Supabase: siSupabase, Vite: siVite, Expo: siExpo, PWA: siPwa, PostgreSQL: siPostgresql, Leaflet: siLeaflet,
+  ONNX: siOnnx, Vitest: siVitest, SQLite: siSqlite, Drizzle: siDrizzle, Jest: siJest, "React Native": siReact,
   GitHub: siGithub, LinkedIn: linkedin, Facebook: siFacebook, Instagram: siInstagram, Email: siGmail,
 };
 
